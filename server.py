@@ -9,25 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-mcp = FastMCP(
-    name="niebawem-tools",
-    version="0.1.0",
-    description="Narzędzia dla zespołu niebawem.fun — eventy, social media, GitHub",
-)
+mcp = FastMCP("niebawem-tools")
 
-from starlette.applications import Starlette
-from starlette.routing import Route, Mount
-from starlette.responses import JSONResponse
-
-
-async def health(request):
-    return JSONResponse({
-        "status": "ok",
-        "server": "niebawem-mcp",
-        "version": "0.1.0",
-        "timestamp": datetime.utcnow().isoformat(),
-        "mode": "SKELETON — mock data only",
-    })
 
 @mcp.tool()
 def fb_create_event(title: str, date: str, time: str, location: str, description: str, ticket_price: float = 0) -> dict:
@@ -61,11 +44,34 @@ def github_create_issue(repo: str, title: str, body: str, labels: list[str] = []
     full_repo = repo if "/" in repo else f"{org}/{repo}"
     return {"status": "mock_success", "issue_number": 42, "url": f"https://github.com/{full_repo}/issues/42", "title": title, "labels": labels, "note": "⚠ MOCK — issue nie powstał na GitHub"}
 
+
 if __name__ == "__main__":
     import uvicorn
-    mcp_app = mcp.get_asgi_app()
+    from starlette.applications import Starlette
+    from starlette.routing import Route, Mount
+    from starlette.responses import JSONResponse
+
+    async def health(request):
+        return JSONResponse({
+            "status": "ok",
+            "server": "niebawem-mcp",
+            "version": "0.1.0",
+            "timestamp": datetime.utcnow().isoformat(),
+            "mode": "SKELETON — mock data only",
+            "tools": ["fb_create_event", "fb_create_post", "ig_create_post", "ig_create_reel", "eventbrite_create_event", "github_create_issue"],
+        })
+
+    # mcp.sse_app() returns Starlette app for SSE transport
+    mcp_sse_app = mcp.sse_app()
+
     app = Starlette(routes=[
         Route("/health", health),
-        Mount("/", app=mcp_app),
+        Mount("/", app=mcp_sse_app),
     ])
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")), log_level="info")
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8000")),
+        log_level="info"
+    )
