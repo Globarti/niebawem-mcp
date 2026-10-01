@@ -209,8 +209,29 @@ def config_status() -> dict:
     }
 
 
+class KeyGuard:
+    """Wymaga ?key=<MCP_KEY> przy otwieraniu /sse (gdy MCP_KEY ustawione).
+
+    /messages/ jest chronione pośrednio: session_id dostaje tylko klient z poprawnym kluczem.
+    """
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.key = os.getenv("MCP_KEY", "")
+
+    async def __call__(self, scope, receive, send):
+        if self.key and scope["type"] == "http" and scope["path"].rstrip("/") == "/sse":
+            from urllib.parse import parse_qs
+            qs = parse_qs(scope.get("query_string", b"").decode())
+            if qs.get("key", [""])[0] != self.key:
+                await send({"type": "http.response.start", "status": 401, "headers": [(b"content-type", b"text/plain")]})
+                await send({"type": "http.response.body", "body": b"unauthorized"})
+                return
+        await self.inner(scope, receive, send)
+
+
 # Use sse_app() - this is what Claude iOS connects to at /sse
-app = mcp.sse_app()
+app = KeyGuard(mcp.sse_app())
 
 if __name__ == "__main__":
     import uvicorn
