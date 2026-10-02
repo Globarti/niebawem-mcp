@@ -210,9 +210,9 @@ def config_status() -> dict:
 
 
 class KeyGuard:
-    """Wymaga ?key=<MCP_KEY> przy otwieraniu /sse (gdy MCP_KEY ustawione).
+    """Wymaga ?key=<MCP_KEY> na /mcp (streamable HTTP, każde żądanie) i przy otwieraniu /sse.
 
-    /messages/ jest chronione pośrednio: session_id dostaje tylko klient z poprawnym kluczem.
+    /messages/ (SSE) jest chronione pośrednio: session_id dostaje tylko klient z poprawnym kluczem.
     """
 
     def __init__(self, inner):
@@ -220,7 +220,7 @@ class KeyGuard:
         self.key = os.getenv("MCP_KEY", "")
 
     async def __call__(self, scope, receive, send):
-        if self.key and scope["type"] == "http" and scope["path"].rstrip("/") == "/sse":
+        if self.key and scope["type"] == "http" and scope["path"].rstrip("/") in ("/sse", "/mcp"):
             from urllib.parse import parse_qs
             qs = parse_qs(scope.get("query_string", b"").decode())
             if qs.get("key", [""])[0] != self.key:
@@ -230,8 +230,10 @@ class KeyGuard:
         await self.inner(scope, receive, send)
 
 
-# Use sse_app() - this is what Claude iOS connects to at /sse
-app = KeyGuard(mcp.sse_app())
+# /mcp = streamable HTTP (zalecany: Claude web, ChatGPT); /sse = starszy transport (Claude iOS)
+_app = mcp.streamable_http_app()
+_app.routes.extend(mcp.sse_app().routes)
+app = KeyGuard(_app)
 
 if __name__ == "__main__":
     import uvicorn
