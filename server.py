@@ -231,8 +231,51 @@ class KeyGuard:
 
 
 # /mcp = streamable HTTP (zalecany: Claude web, ChatGPT); /sse = starszy transport (Claude iOS)
+# ------------------------------------------------- Komentarze zespołu ---
+# Proste komentarze do stron-podglądów (niebawem.fun/promo/...), wystawione przez Caddy
+# pod niebawem.fun/api/comments (ta sama domena = bez CORS). Zapis w /data/comments.json.
+import json
+import threading
+import uuid
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+
+COMMENTS_FILE = os.getenv("COMMENTS_FILE", "/data/comments.json")
+TEAM = ["Paweł", "Bartek", "Rafał", "Julia", "Patryk", "Tomek", "Damian"]
+_lock = threading.Lock()
+
+
+def _load() -> list:
+    try:
+        with open(COMMENTS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+async def comments(request: Request):
+    page = request.query_params.get("page", "")[:80]
+    if request.method == "GET":
+        return JSONResponse([c for c in _load() if c["page"] == page])
+    data = await request.json()
+    name, text, anchor = data.get("name", ""), (data.get("text") or "").strip(), (data.get("anchor") or "")[:120]
+    if name not in TEAM or not text or not page:
+        return JSONResponse({"error": "niepoprawne dane"}, status_code=400)
+    c = {"id": uuid.uuid4().hex[:10], "page": page, "anchor": anchor, "label": (data.get("label") or "")[:160],
+         "name": name, "text": text[:2000], "ts": datetime.now().strftime("%Y-%m-%d %H:%M")}
+    with _lock:
+        allc = _load()
+        allc.append(c)
+        os.makedirs(os.path.dirname(COMMENTS_FILE), exist_ok=True)
+        with open(COMMENTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(allc, f, ensure_ascii=False, indent=1)
+    return JSONResponse(c)
+
+
 _app = mcp.streamable_http_app()
 _app.routes.extend(mcp.sse_app().routes)
+_app.routes.append(Route("/api/comments", comments, methods=["GET", "POST"]))
 app = KeyGuard(_app)
 
 if __name__ == "__main__":

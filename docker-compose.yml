@@ -6,3 +6,5 @@ services:
     env_file: .env
     ports:
       - "127.0.0.1:8070:8000"
+    volumes:
+      - ./data:/data
