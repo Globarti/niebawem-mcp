@@ -259,6 +259,7 @@ async def comments(request: Request):
     if request.method == "GET":
         return JSONResponse([c for c in _load() if c["page"] == page])
     data = await request.json()
+    page = page or (data.get("page") or "")[:80]
     name, text, anchor = data.get("name", ""), (data.get("text") or "").strip(), (data.get("anchor") or "")[:120]
     if name not in TEAM or not text or not page:
         return JSONResponse({"error": "niepoprawne dane"}, status_code=400)
